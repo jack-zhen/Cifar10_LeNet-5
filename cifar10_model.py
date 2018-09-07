@@ -25,7 +25,14 @@ def cifar10_input(files):
     return image_batch, label_batch
 
 
-# 构建网络模型
+def variable_summaries(var, name):
+    with tf.name_scope('summaries'):
+        tf.summary.histogram(name, var)
+        mean = tf.reduce_mean(var)
+        tf.summary.scalar(name,mean)
+        stddev = tf.sqrt(tf.reduce_mean(tf.square(var-mean)))
+        tf.summary.scalar(name,stddev)
+
 
 def biases_generator(name, shape, initializer):
     biases = tf.get_variable(name, shape=shape, initializer=initializer)
@@ -47,6 +54,8 @@ def inference(images):
         conv1_temp = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')
         conv1 = tf.nn.relu(tf.nn.bias_add(conv1_temp, biases), name=scope.name)
         # print("After  conv1 data shape",conv1.shape)
+        variable_summaries(kernel, 'conv1/kernel')
+        variable_summaries(biases, 'conv1/biases')
     # 池化层1
     pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool1')
     # print("After  pool1 data shape", pool1.shape)
@@ -59,6 +68,8 @@ def inference(images):
         conv2_temp = tf.nn.conv2d(pool1, kernel, [1, 1, 1, 1], padding='SAME')
         biases = tf.get_variable('biases', shape=[128], initializer=tf.constant_initializer(0.1))
         conv2 = tf.nn.relu(tf.nn.bias_add(conv2_temp, biases))
+        variable_summaries(kernel, 'conv2/kernel')
+        variable_summaries(biases, 'conv2/biases')
         # print("After  conv2 data shape", conv2.shape)
     # 池化层2
     pool2 = tf.nn.max_pool(conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME', name='pool2')
@@ -73,6 +84,8 @@ def inference(images):
         biases = biases_generator('biases', [384], tf.constant_initializer(0.1))
         local3 = tf.nn.relu(tf.matmul(reshape, weights)+biases, name=scope.name)
         # print("After local3 data shape", local3.shape)
+        variable_summaries(weights, 'local3/weights')
+        variable_summaries(biases, 'local3/biases')
 
     # 全链接层2
     with tf.variable_scope('local4') as scope:
@@ -80,6 +93,8 @@ def inference(images):
                                     tf.truncated_normal_initializer(stddev=0.04, dtype=tf.float32))
         biases = biases_generator('biases', [192], tf.constant_initializer(0.1))
         local4 = tf.nn.relu(tf.matmul(local3, weights)+biases, name=scope.name)
+        variable_summaries(weights, 'local4/weights')
+        variable_summaries(biases, 'local4/biases')
         # print("After local4 data shape", local4.shape)
 
     # Softmax 分类层
@@ -89,7 +104,11 @@ def inference(images):
         biases = biases_generator('biases', [10], tf.constant_initializer(0.0))
         softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
         # print("After softmax_linear data shape", softmax_linear.shape)
-        return softmax_linear
+        variable_summaries(weights, 'softmax/weights')
+        variable_summaries(biases, 'softmax/biases')
+    # writer = tf.summary.FileWriter("./log", tf.get_default_graph())
+    # writer.close()
+    return softmax_linear
 
 
 def loss(logits, label):
@@ -99,4 +118,6 @@ def loss(logits, label):
         labels=label, logits=logits, name='cross_entropy_per_example')
     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
     tf.add_to_collection('losses', cross_entropy_mean)
+    writer = tf.summary.FileWriter("./log", tf.get_default_graph())
+    writer.close()
     return tf.add_n(tf.get_collection('losses'), name='total_loss')
